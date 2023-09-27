@@ -1,0 +1,540 @@
+---
+title: "Examen parcial"
+author: "Alejo Nicolás Romano"
+date: "30/5/2022"
+output: pdf_document
+---
+
+![](E:/ITBA/Logo-ITBA.png)
+
+\begin{center}
+
+\textbf{Instituto Tecnológico de Buenos Aires}
+
+\textbf{16.43 - Bioestadística}
+
+\end{center}
+
+\hfill \break 
+
+Profesoras:
+
+  * SANTA MARÍA, Victoria 
+  
+  * BERRINO, Eugenia 
+  
+  * CIRIGNOLI, Camila 
+
+Alumno:
+
+  * ROMANO, Alejo Nicolás
+  
+Legajo: 59351
+
+\hfill
+
+Fecha de Entrega: 30 / 05 / 2022
+  
+\newpage
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE, echo = TRUE)   # message = FALSE
+```
+
+Antes de empezar, se configura el Working-Directory.
+
+```{r working directory}
+setwd('E:/ITBA/Bioestadistica/parcial')
+```
+
+y se importan las librerías a utilizar en el trabajo.
+
+```{r}
+library(ggplot2)
+library(magrittr)
+library(knitr)
+library(dplyr)
+library(ggpubr)
+library(nortest)
+library(cowplot)  # subplots
+library(car)
+library(ggExtra)  # Graficos afuera de otros graficos
+library(epitools)
+library(gmodels)
+library(readxl)
+library(survival)
+library(survminer)
+library(lubridate)
+library(fastDummies)
+library(ResourceSelection)
+library(lmtest)
+```
+
+Para empezar, se carga el archivo **parcial1Q22.xls** en el objeto **datos**. Para verificar que el objeto es efectivamente un dataframe, se utiliza la función **class()**.
+
+```{r}
+datos <- read_xls('parcial1Q22.xls')
+class(datos)
+```
+
+A continuación, se observan un resumen de la estructura del dataframe.
+
+```{r}
+str(datos)
+```
+
+Se puede observar que el dataframe contiene 9 variables de tipo numérico, con 1363 observaciones cada una. La primera variable corresponde simplemente a un índice de los pacientes, por lo que no tiene relevancia en el estudio.
+
+Para obtener un resumen de los datos de cada variable, se realiza el siguiente **summary**.
+
+```{r}
+summary(datos)
+```
+
+Se puede observar que las variables **Hombre** y **EC** son dicotómicas, por lo que se tiene que redefinir el tipo de variable a factor. Por otra parte, se puede observar que las variables **cig** y **packs/y** presentan una observación con valores NA. 
+
+Se pasa las variables **Hombre** y **EC** a tipo factor.
+
+```{r}
+datos$Hombre <- as.factor(datos$Hombre)
+datos$EC <- as.factor(datos$EC)
+
+data.frame(Variable = names(datos), Tipo = sapply(datos, class),
+           row.names = NULL) %>%
+kable()
+```
+
+Luego, se decide eliminar las filas que contienen datos faltantes (NA's), dado que son pocas observaciones y el tamaño de la muestra es grande. Esto se hace con el siguiente código.
+
+```{r}
+datos <- datos[complete.cases(datos), ]
+```
+
+Una vez analizada la estructura del dataframe, se obtiene la estadística básica de las variables mediante la función **summary()**.
+
+```{r}
+summary(datos)
+```
+
+
+# Ejercicio 1
+
+El trabajo planteado corresponde al diseño de un estudio de cohortes, dado que el estudio es de tipo observacional y consiste en seguir un grupo de muestras en un intervalo de tiempo. Esto tiene sentido dado que este diseño de estudio se utiliza para evaluar la relación entre una exposición y la ocurrencia de un evento de interés, lo que permite identificar factores de riesgo.
+
+La pregunta PICO para esta investigación es la siguiente:
+
+\begin{itemize}
+  \item \textbf{Población (P).} Pacientes que consultaron por primera vez en el año 2010 y 2011 al servicio de Cardiología del Hospital de Clínicas.
+  \item \textbf{Intervención (I).} Las covariables del estudio, es decir, la exposición que tienen los sujetos (sexo, colesterol, cigarrillos, presiones, etc.). 
+  \item \textbf{Comparación (C).} No hay comparación, dado que no se evalúan poblaciones diferentes entre sí.
+  \item \textbf{Resultado (O).} Enfermedad coronaria (EC).
+\end{itemize}
+
+
+# Ejercicio 2
+
+El diseño experimental puede presentar los siguientes sesgos:
+
+\begin{itemize}
+    \item \textbf{De selección.} Dado que los pacientes asisten al servicio de cardiología de un hospital, estos presentan mayor prevalencia del evento de interés. Además, puede ser que presenten otros factores de riesgo o enfermedades graves, los cuales pueden interferir en el estudio o incluso hacer que el paciente abandone el estudio (p. ej. sujeto fallece por otra enfermedad cardíaca).
+    \item \textbf{De clasificación.} Es probable que los sujetos ya presenten el evento de interés al inicio del estudio, dado que asisten al servicio de cardiología, pero que aún no se haya detectado.
+    \item \textbf{De información.} Es posible que haya errores en la medición o tomas de datos en la etapa inicial del estudio, lo cual afecta la exposición de los sujetos y, por ende, afecta la relación con el outcome.
+\end{itemize}
+
+
+# Ejercicio 3
+
+Las variables **Edad**, **PAS**, **PAD**, **Colesterolemia**, **Cig** y **Packs/y** son variables numéricas, por lo que se estudia la distribución de estas variables mediante la siguiente función de normalidad:
+
+```{r}
+pruebas_normalidad = function(dataframe, xlab = "X", ylab = "Densidad", main = "Título")
+{
+  # Tests de Normalidad
+  print(lillie.test(dataframe))
+  print(shapiro.test(dataframe))
+  
+  # Q-Q plot
+  print(ggqqplot(dataframe, main=main))
+  
+  # Estadísticos básicos
+  min <- min(dataframe)
+  max <- max(dataframe)
+  media <- mean(dataframe)
+  desvio <- sd(dataframe)
+  
+  # Histograma
+  hist(dataframe, freq = F, main = main, xlab = xlab, ylab = ylab, border = "salmon",
+       col = "khaki")
+  curve(dnorm(x, media, desvio), from = min, to = max, add = TRUE, col = "black")
+}
+```
+
+Esta función realiza los Test Shapiro-Wilk y el Test Kolgomorov-Smirnov, los cuales toman como hipótesis nula que la variable analizada presenta una distribución normal, mientras que toman como hipótesis alternativa que la variable no cumple con la normalidad.
+
+Para la variable **Edad**, se obtienen los siguientes resultados.
+
+```{r, out.width="70%", fig.align='center'}
+pruebas_normalidad(datos$Edad, "Edad (años)", "Densidad", "Edad")
+```
+
+Se puede observar que ambos p-values ($< 2,2.10^{-16}$) dan menores a 0.05, por lo que se rechaza la hipótesis nula mencionada y se acepta la hipótesis alternativa. Esto quiere decir que la variable **Edad** NO tiene distribución normal.
+
+Con respecto a los métodos gráficos, en el Q-Q plot se puede observar que la distribución se aleja de la recta de distribución teórica normal. Los puntos salen de la región gris tanto en el medio como en el extremo de la derecha, lo que indica que estos puntos caen por fuera del intervalo de confianza tomado (95%). Por lo tanto, este gráfico muestra que la distribución de la variable en cuestión no es normal, lo que es coherente con los test de normalidad. Además, se puede observar en el histograma que la distribución no se asemeja a la campana simétrica teórica de una distribución normal, lo cual indica que la variable no presenta distribución normal.
+
+Para la variable **PAS**, se obtienen los siguientes resultados.
+
+```{r, out.width="70%", fig.align='center'}
+pruebas_normalidad(datos$PAS, "PAS (mmHg)", "Densidad", "Presión sistólica en examen 1")
+```
+
+Se puede observar que ambos p-values ($< 2,2.10^{-16}$) dan menores a 0.05, por lo que se rechaza la hipótesis nula mencionada y se acepta la hipótesis alternativa. Esto quiere decir que la variable **PAS** NO tiene distribución normal.
+
+Con respecto a los métodos gráficos, en el Q-Q plot se puede observar que la distribución se aleja de la recta de distribución teórica normal. Los puntos salen de la región gris tanto en el medio como en el extremo de la derecha, lo que indica que estos puntos caen por fuera del intervalo de confianza tomado (95%). Por lo tanto, este gráfico muestra que la distribución de la variable en cuestión no es normal, lo que es coherente con los test de normalidad. Además, se puede observar en el histograma que la distribución no se asemeja a la campana simétrica teórica de una distribución normal, sino que los datos tienden hacia la izquierda. Esto indica que la variable no presenta distribución normal.
+
+Para la variable **PAD**, se obtienen los siguientes resultados.
+
+```{r, out.width="70%", fig.align='center'}
+pruebas_normalidad(datos$PAD, "PAD (mmHg)", "Densidad", "Presión diastólica en examen 1")
+```
+
+Se puede observar que ambos p-values ($< 2,2.10^{-16}$) dan menores a 0.05, por lo que se rechaza la hipótesis nula mencionada y se acepta la hipótesis alternativa. Esto quiere decir que la variable **PAD** NO tiene distribución normal.
+
+Con respecto a los métodos gráficos, en el Q-Q plot se puede observar que la distribución se aleja de la recta de distribución teórica normal. Los puntos salen de la región gris tanto en el medio como en el extremo de la derecha, lo que indica que estos puntos caen por fuera del intervalo de confianza tomado (95%). Por lo tanto, este gráfico muestra que la distribución de la variable en cuestión no es normal, lo que es coherente con los test de normalidad. Además, se puede observar en el histograma que la distribución no se asemeja a la campana simétrica teórica de una distribución normal, sino que los datos tienden hacia la izquierda. Esto indica que la variable no presenta distribución normal.
+
+Para la variable **Colesterolemia**, se obtienen los siguientes resultados.
+
+```{r, out.width="70%", fig.align='center'}
+pruebas_normalidad(datos$Colesterolemia, "Colesterolemia (mg %)", "Densidad", "Colesterolemia")
+```
+
+Se puede observar que ambos p-values ($5,798.10^{-12}$ para Kolmogorov y $3,742.10^{-10}$ para Shapiro) dan menores a 0.05, por lo que se rechaza la hipótesis nula mencionada y se acepta la hipótesis alternativa. Esto quiere decir que la variable **Colesterolemia** NO tiene distribución normal.
+
+Con respecto a los métodos gráficos, en el Q-Q plot se puede observar que la distribución se aleja de la recta de distribución teórica normal. Los puntos salen de la región gris tanto en el medio como en el extremo de la derecha, lo que indica que estos puntos caen por fuera del intervalo de confianza tomado (95%). Por lo tanto, este gráfico muestra que la distribución de la variable en cuestión no es normal, lo que es coherente con los test de normalidad. Además, se puede observar en el histograma que la distribución se asemeja un poco a la campana simétrica teórica de una distribución normal, pero los datos tienden levemente hacia la izquierda. Esto indica que la variable no presenta distribución normal.
+
+Para la variable **cig**, se obtienen los siguientes resultados.
+
+```{r, out.width="70%", fig.align='center'}
+pruebas_normalidad(datos$cig, "Cig (cigarrillos/día)", "Densidad", "Cigarrillos fumados por día")
+```
+
+Se puede observar que ambos p-values ($< 2,2.10^{-16}$) dan menores a 0.05, por lo que se rechaza la hipótesis nula mencionada y se acepta la hipótesis alternativa. Esto quiere decir que la variable **cig** NO tiene distribución normal.
+
+Con respecto a los métodos gráficos, en el Q-Q plot se puede observar que la distribución se aleja de la recta de distribución teórica normal. Los puntos salen de la región gris tanto en el medio como en el extremo de la derecha, lo que indica que estos puntos caen por fuera del intervalo de confianza tomado (95%). Por lo tanto, este gráfico muestra que la distribución de la variable en cuestión no es normal, lo que es coherente con los test de normalidad. Además, se puede observar en el histograma que la distribución no se asemeja a la campana simétrica teórica de una distribución normal, lo cual indica que la variable no presenta distribución normal.
+
+Se puede observar que las variables analizadas no presentan distribución normal. Además, dado que son observaciones independientes (por el diseño del estudio), se utiliza el Test Wilcoxon rank-sum para el análisis univariado de cada variable numérica continua (comparar el outcome para cada variable por separado).
+
+La variable **Hombre** es dicotómica, no presenta unidades y tiene una distribución binomial. Por lo tanto, se debe usar el Test Chi cuadrado (o Fisher) para comparar el outcome para esta variable.
+
+La varibale **Packs** es categórica ordinal, dado que se utiliza una escala que permite medir la cantidad de paquetes de cigarrillos fumados por año. No presenta unidad y su distribución es xxxxxxx. Por lo tanto, se debe utilizar el Test Chi cuadrado para comparar el outcome para esta variable.
+
+Por último, la variable **EC** es la variable respuesta (el resto de las variables son explicatorias) y es dicotómica. No presenta unidad y su distribución es binomial. 
+
+
+# Ejercicio 4
+
+En primer lugar, se analizan las variables numéricas continuas, que son las siguientes: **Edad**, **PAS**, **PAD**, **Colesterolemia** y **cig**. En primer lugar, se calculan las proporciones o estadísticos de los dos grupos según la variable **EC**. Dado que son variables numéricas continuas que no presentan distribución normal, se calcula la mediana y el rango intercuartil para cada una.
+```{r}
+mediana_edad <- aggregate(datos$Edad, list(datos$EC), median)
+mediana_pas <- aggregate(datos$PAS, list(datos$EC), median)
+mediana_pad <- aggregate(datos$PAD, list(datos$EC), median)
+mediana_colest <- aggregate(datos$Colesterolemia, list(datos$EC), median)
+mediana_cig <- aggregate(datos$cig, list(datos$EC), median)
+
+paste('Mediana - (No EC | Si EC)')
+mediana_edad[,2]
+mediana_pas[,2]
+mediana_pad[,2]
+mediana_colest[,2]
+mediana_cig[,2]
+```
+
+```{r}
+iqr_edad <- aggregate(datos$Edad, list(datos$EC), IQR)
+iqr_pas <- aggregate(datos$PAS, list(datos$EC), IQR)
+iqr_pad <- aggregate(datos$PAD, list(datos$EC), IQR)
+iqr_colest <- aggregate(datos$Colesterolemia, list(datos$EC), IQR)
+iqr_cig <- aggregate(datos$cig, list(datos$EC), IQR)
+
+paste('IQR - (No EC | Si EC)')
+iqr_edad[,2]
+iqr_pas[,2]
+iqr_pad[,2]
+iqr_colest[,2]
+iqr_cig[,2]
+```
+
+Luego, se realizan los correspondientes test para evaluar si los dos grupos para cada variable son estadísticamente diferentes o no. Para estas variables, dado que no presentan distribución normal y los dos grupos son independientes entre sí, se realiza el Test Wilcoxon rank-sum. Este Test tiene como hipótesis nula que las medianas de los dos grupos analizados (para cada variable) tienen medianas iguales, mientras que tiene como hipótesis alternativa que las medianas son significativamente diferentes.
+
+Para la variable **edad**, el test se realiza con el siguiente código.
+
+```{r}
+wilcox.test(datos$Edad[datos$EC==0], datos$Edad[datos$EC==1],
+                           exact = F, conf.int = T)
+```
+
+El Test da como resultado un p-value ($4,046.10^{-06}$) menor a 0.05. Por lo tanto, se rechaza la hipótesis nula y se acepta la alternativa, es decir, hay diferencias significativas entre las edades de los grupos con y sin EC.
+
+Para la variable **PAS**, el test se realiza con el siguiente código.
+
+```{r}
+wilcox.test(datos$PAS[datos$EC==0], datos$PAS[datos$EC==1],
+                           exact = F, conf.int = T)
+```
+
+El Test da como resultado un p-value ($2,475.10^{-12}$) menor a 0.05. Por lo tanto, se rechaza la hipótesis nula y se acepta la alternativa, es decir, hay diferencias significativas entre las presiones sistólicas en el primer examen de los grupos con y sin EC.
+
+Para la variable **PAD**, el test se realiza con el siguiente código.
+
+```{r}
+wilcox.test(datos$PAD[datos$EC==0], datos$PAD[datos$EC==1],
+                           exact = F, conf.int = T)
+```
+
+El Test da como resultado un p-value ($1,460.10^{-08}$) menor a 0.05. Por lo tanto, se rechaza la hipótesis nula y se acepta la alternativa, es decir, hay diferencias significativas entre las presiones diastólicas en el primer examen de los grupos con y sin EC.
+
+Para la variable **Colesterolemia**, el test se realiza con el siguiente código.
+
+```{r}
+wilcox.test(datos$Colesterolemia[datos$EC==0], datos$Colesterolemia[datos$EC==1],
+                           exact = F, conf.int = T)
+```
+
+El Test da como resultado un p-value ($0.04481$) menor a 0.05. Por lo tanto, se rechaza la hipótesis nula y se acepta la alternativa, es decir, hay diferencias significativas entre las colesterolemias en el primer examen de los grupos con y sin EC. Hay que destacar que el p-value obtenido se encuentra muy cerca del valor 0.05.
+
+Para la variable **cig**, el test se realiza con el siguiente código.
+
+```{r}
+wilcox.test(datos$cig[datos$EC==0], datos$cig[datos$EC==1],
+                           exact = F, conf.int = T)
+```
+
+El Test da como resultado un p-value ($0.01382$) menor a 0.05. Por lo tanto, se rechaza la hipótesis nula y se acepta la alternativa, es decir, hay diferencias significativas entre los cigarrillos fumados por día de los grupos con y sin EC.
+
+Con respecto a la variable **Hombre**, esta es dicotómica con distribución binomial. Primero, se calculan las proporciones de sujetos entre los valores de esta variable y los de la variable resultado, **EC**.
+
+```{r}
+summary(datos$Hombre[datos$EC == 0])
+```
+```{r}
+summary(datos$Hombre[datos$EC == 1])
+```
+
+Se puede observar que hay 615 sujetos no hombres sin EC, 479 sujetos hombres sin EC, 104 sujetos no hombres con EC y 164 sujetos hombres con EC. 
+
+Dado que los grupos a evaluar (con y sin EC) son independientes entre sí, se utiliza el Test Chi Cuadrado para evaluar la diferencia entre dichos grupos. Este Test toma como hipótesis nula que todas las probabilidades de ocurrencia de las celdas de la tabla de contingencia son iguales entre sí, es decir, que las variables son independientes. La hipótesis alternativa establece que al menos una de esas probabilidades es distinta al resto, es decir, que las variables no son independientes. A continuación, se realiza el test indicando que se utilice la corrección de Yates, ya que la tabla de contingencia es de 2x2.
+
+
+```{r}
+chisq_1 <- chisq.test(datos$Hombre, datos$EC, correct = TRUE)
+chisq_1
+```
+
+El Test da como resultado un p-value ($4,455.10^{-07}$) menor a 0.05. Por lo tanto, se rechaza la hipótesis nula y se acepta la alternativa, es decir, las variables **Hombre** y **EC** son independientes entre sí (no hay relación).
+
+Por último, con respecto a la variable **packs**, esta es categórica ordinal, dado que utiliza una escala de tres valores. Primero, se calculan las proporciones de sujetos entre los valores de esta variable y los de la variable resultado, **EC**.
+
+```{r}
+sum(datos$EC == 0 & datos$`packs/y` == 0)
+sum(datos$EC == 0 & datos$`packs/y` == 1)
+sum(datos$EC == 0 & datos$`packs/y` == 2)
+
+sum(datos$EC == 1 & datos$`packs/y` == 0)
+sum(datos$EC == 1 & datos$`packs/y` == 1)
+sum(datos$EC == 1 & datos$`packs/y` == 2)
+```
+
+Se puede observar que hay 614 sujetos sin EC y con consumo bajo de packs (categoría 0), 388 sujetos sin EC y con consumo intermedio de packs (categoría 1), 92 sujetos sin EC y con consumo alto de packs (categoría 2), 134 sujetos con EC y con consumo bajo de packs, 99 sujetos con EC y con consumo intermedio de packs y 35 sujetos con EC y con consumo alto de packs.
+
+Dado que los grupos a evaluar (con y sin EC) son independientes entre sí, se utiliza el Test Chi Cuadrado para evaluar la diferencia entre dichos grupos. Este Test toma como hipótesis nula que todas las probabilidades de ocurrencia de las celdas de la tabla de contingencia son iguales entre sí, es decir, que las variables son independientes. La hipótesis alternativa establece que al menos una de esas probabilidades es distinta al resto, es decir, que las variables no son independientes.
+
+```{r}
+chisq_1 <- chisq.test(datos$`packs/y`, datos$EC)
+chisq_1
+```
+
+El Test da como resultado un p-value ($0.03701$) menor a 0.05. Por lo tanto, se rechaza la hipótesis nula y se acepta la alternativa, es decir, las variables **packs/y** y **EC** son independientes entre sí (no hay relación).
+
+# Ejercicio 5
+
+Dado que la variable resultado es categórica y dicotómica, se debe usar un modelo de regresión logística para poder obtener la probabilidad de ocurrencia de dicha variable a partir de las variables explicatorias. De esta manera, se puede realizar un análisis multivariado de la base de datos que se está estudiando. 
+
+Antes de realizar el modelo completo, se realiza las variables dummies para la variable packs, es decir, se generan tres nuevas variables, una para cada valor posible de packs. Así, se obtienen variables dicotómicas (con dos valores: 0 y 1).
+
+```{r}
+packs_dummy <- dummy_cols(datos$`packs/y`)
+colnames(packs_dummy)<-c('packs','packs0', 'packs1', 'packs2')
+datos_dummy<-cbind(datos,packs_dummy)
+str(datos_dummy)
+datos_dummy$packs0 <- as.factor(datos_dummy$packs0)
+datos_dummy$packs1 <- as.factor(datos_dummy$packs1)
+datos_dummy$packs2 <- as.factor(datos_dummy$packs2)
+str(datos_dummy)
+```
+
+En primer lugar, se realiza el modelo general linealizado completo, es decir, utilizando todas las variables del dataframe, con excepción de la variable ID y la variable packs sin modificar (**Modelo saturado**). Este modelo de regresión logística queda definida entonces por la siguiente ecuación:
+
+\begin{equation}
+  logit(p) = \beta _0 + \beta _1 Edad + \beta _2 PAS + \beta _3 PAD + \beta _4 Colesterolemia + \beta _5 Hombre + \beta _6 cig + \beta _7 packs0 + \beta _8 packs1 + \beta _9 packs2
+\end{equation}
+
+Se genera el modelo y se imprime los resultados.
+
+```{r}
+logistica_1 <- glm(EC ~ Edad + PAS + PAD + Colesterolemia + Hombre + cig + 
+                     packs0 + packs1 + packs2, data = datos_dummy, family = "binomial")
+summary(logistica_1)
+```
+
+El test realizado para los coeficientes tiene como hipótesis nula que el coeficiente $\beta _i$ es igual a cero, y tiene como hipótesis alternativa que el coeficiente es distinto de cero. Se puede observar que las variables **PAD**, **cig**, **packs0** y **packs1** presentan un p-value mayor a 0.05, por lo que se acepta la hipótesis nula y, por ende, estos coeficientes son iguales a 0 (no significativos para el modelo). Por otro lado, el resto de las variables, incluida la ordenada al origen ($\beta _0$) presentan p-values menores a 0.05, por lo que se rechaza la hipótesis nula y se acepta la alternativa. Esto quiere decir que los coeficientes asociados a estas variables son significativos y no nulos: la ordenada al origen es $-8.768825$, el coeficiente para la edad es $0.057720$, el coeficiente para la PAS es $0.015013$, el coeficiente para la colesterolemia es $0.004614$ y el coeficiente para hombre es $0.906132$. Estos coeficientes indican la relación que existe entre sus respectivas variables y la probabilidad de ocurrencia de EC.
+
+Cabe destacar que la variable **packs2** tiene valores NaNs dado que, al hacer variables dummy, se comparan las variables contra una de ellas. En este caso, la variable que se utiliza para comparar es **packs2**.
+
+Por último, el modelo queda definida por la siguiente ecuación:
+
+\begin{equation}
+  logit(p) = -8.768825 + 0.057720 Edad + 0.015013 PAS + 0.004614 Colesterolemia + 0.906132 Hombre
+\end{equation}
+
+Luego, se obtienen los Odds Ratio y sus respectivos intervalos de confianza.
+
+```{r}
+OR1 = exp(coefficients(logistica_1))
+b = exp(confint(logistica_1))
+OR = cbind(OR1,b)
+OR
+```
+
+Se puede observar en los resultados de OR que las variables **PAD**, **cig**, **packs0** y **packs1** tienen intervalos de confianza que incluyen al 1. Esto quiere decir que dichas variables son independientes del outcome (**EC**). Por otro lado, el resto de las variables no son independientes del outcome y son significativas. Para la **edad**, el OR es mayor a 1 (factor de riesgo) y su intervalo no lo incluye, por lo que se puede decir que por cada año que aumenta la edad, el riesgo de sufrir una EC aumenta en un 6% (o aumenta 1.06 veces). Para la **PAS**, el OR es mayor a 1 (factor de riesgo) y su intervalo no lo incluye, por lo que se puede decir que por cada aumento unitario de PAS, el riesgo de sufrir una EC aumenta un 1.5% (o aumenta 1.015 veces). Para la variable **colesterolemia**, el OR es mayor a 1 (factor de riesgo) y su intervalo no lo incluye, por lo que se puede decir que por cada aumento unitario de colesterolemia, el riesgo de sufrir una EC aumenta en un 0.46% (o 1.0046 veces). Para la variable **Hombre**, el OR es mayor a 1 (factor de riesgo) y su intervalo no lo incluye, por lo que se puede decir que ser hombre aumenta el riesgo de sufrir una EC en un 147% (o aumenta 2.4747 veces). 
+
+Se realiza el Test de Omnibus.
+
+```{r}
+datos_dummy$EC <- as.numeric(datos_dummy$EC)
+omnibus <- aov(logistica_1, data = datos_dummy)
+summary(omnibus)
+```
+
+Con respecto a los p-values del omnibus, las variables que no son significativas para el modelo global son PAD, Colesterolemia, Cig, Packs0 y Packs1. El resto de las variables son significativas dado que el p-value es menor a 0.05.
+
+Para saber que tan bien ajusta el modelo generado al conjunto de datos, se realiza la prueba de bondad de ajuste de Hosmer-Lemeshow. En función de que tan bien esta ajustado el modelo a los datos, se puede inferir que tan certero o acertado va a ser el modelo. Este test compara las frecuencias esperadas con las frecuencias observadas del modelo. Si las frecuencias observadas son similares a las frecuencias esperadas, entonces el modelo presenta un buen ajuste. La hipótesis nula que se plantea para esta prueba es que la diferencia entre frecuencias observadas y las esperadas es igual a cero (observado igual a esperado), mientras que la hipótesis alternativa indica que esta diferencia es distinta de cero.
+
+```{r}
+prediccion <- predict(logistica_1, type="response")
+hosmer <- hoslem.test(logistica_1$y, logistica_1$fitted.values) # Test Hosmwe-Lemeshow
+hosmer
+```
+
+Como el Test de bondad de ajuste de Hosmer-Lemeshow da un p-value (0.396) mayor a 0.05, entonces la diferencia entre lo observado y lo esperado es igual a cero y, por ende, el modelo ajusta bien al conjunto de datos que se tiene.
+
+# Ejercicio 6
+
+A continuación, se decide utilizar el método **backward elimination** para ir sacando aquellas variables que no son significativas para el modelo, es decir, que no tengan una contribución parcial. Para esto, se elimina la variable que tiene menor contribución, es decir, la variable que obtenga el p-value más grande. Estos p-values se obtienen de los test de hipótesis aplicados a los coeficientes, donde las hipótesis son análogas a las mencionadas en el modelo saturado.
+
+Dado que en el modelo saturado la variable **packs0** es la que presenta un p-value mayor, es la que se elimina primero.
+
+```{r}
+datos_dummy$EC <- as.factor(datos_dummy$EC)
+logistica_2_1 <- glm(EC ~ Edad + PAS + PAD + Colesterolemia + Hombre + cig + 
+                     packs1 + packs2, data = datos_dummy, family = "binomial")
+summary(logistica_2_1)
+```
+
+Se observa que, al eliminar la variable **packs0**, todas las variables se mantuvieron igual en términos de significancia, salvo **colesterolemia**, la cual pasó a ser significativa. Ahora se elimina **packs1** dado que presenta el p-value más grande.
+
+```{r}
+datos_dummy$EC <- as.factor(datos_dummy$EC)
+logistica_2_2 <- glm(EC ~ Edad + PAS + PAD + Colesterolemia + Hombre + cig + 
+                     packs2, data = datos_dummy, family = "binomial")
+summary(logistica_2_2)
+```
+
+Las significancias se mantuvieron para las variables y sus coeficientes, por lo que se procede a eliminar la variable **packs2**, la cual presenta el p-value más grande.
+
+```{r}
+datos_dummy$EC <- as.factor(datos_dummy$EC)
+logistica_2_3 <- glm(EC ~ Edad + PAS + PAD + Colesterolemia + Hombre + cig,
+                     data = datos_dummy, family = "binomial")
+summary(logistica_2_3)
+```
+
+Nuevamente se mantuvieron las significancias de las variables y sus coeficientes, por lo que se elimina la variable **PAD**.
+
+```{r}
+datos_dummy$EC <- as.factor(datos_dummy$EC)
+logistica_2_4 <- glm(EC ~ Edad + PAS + Colesterolemia + Hombre + cig,
+                     data = datos_dummy, family = "binomial")
+summary(logistica_2_4)
+```
+
+Se puede observar que todos los coeficientes para las variables del modelo dan significativos, salvo para la variable **cig**, por lo que se procede a eliminarla.
+
+```{r}
+datos_dummy$EC <- as.factor(datos_dummy$EC)
+logistica_2_5 <- glm(EC ~ Edad + PAS + Colesterolemia + Hombre,
+                     data = datos_dummy, family = "binomial")
+summary(logistica_2_5)
+```
+
+Finalmente, se llegó a un modelo donde todos los coeficientes asociados a las variables **Edad**, **PAS**, **Colesterolemia** y **Hombre** dan significativos (p-value menor a 0.05), con coeficientes iguales a $0.051574$, $0.016868$, $0004762$ y $1.010859$, respectivamente. Además, se obtiene una ordenada al origen significativa con un valor de $-8.347166$. El modelo reducido queda entonces definido por la siguiente ecuación:
+
+\begin{equation}
+  logit(p) = \beta _0 + \beta _1 Edad + \beta _2 PAS + \beta _4 Colesterolemia + \beta _5 Hombre
+\end{equation}
+
+\begin{equation}
+  logit(p) = -8.347166 + 0.051574 Edad + 0.016868 PAS + 0004762 Colesterolemia + 1.010859 Hombre
+\end{equation}
+
+Luego, se obtienen los Odds Ratio y sus respectivos intervalos de confianza.
+
+```{r}
+OR2 = exp(coefficients(logistica_2_5))
+b = exp(confint(logistica_2_5))
+OR2 = cbind(OR2,b)
+OR2
+```
+
+Se puede observar en los resultados de OR que ninguna de las variables tienen OR iguales a 1 o intervalos que incluyan al 1, por lo que todas las variables no son independientes del outcome y son significativas. Para la **edad**, se puede decir que por cada año que aumenta la edad, el riesgo de sufrir una EC aumenta en un 5.29% (o aumenta 1.0529 veces). Para la **PAS**, se puede decir que por cada aumento unitario de PAS, el riesgo de sufrir una EC aumenta un 1.7% (o aumenta 1.017 veces). Para la variable **colesterolemia**, se puede decir que por cada aumento unitario de colesterolemia, el riesgo de sufrir una EC aumenta en un 0.477% (o 1.00477 veces). Para la variable **Hombre**, se puede decir que ser hombre aumenta el riesgo de sufrir una EC en un 174796% (o aumenta 2.74796 veces). 
+
+se realiza el Test de Omnibus.
+```{r}
+datos_dummy$EC <- as.numeric(datos_dummy$EC)
+omnibus2 <- aov(logistica_2_5, data = datos_dummy)
+summary(omnibus2)
+```
+
+Con respecto a los p-values del omnibus, s epuede ver que todas las variables son significativas dado que el p-value es menor a 0.05, salvo la variable colesterolemia, la cual presenta un p-value mayor a 0.05 y, por ende, no es significativa para el modelo global.
+
+Luego, se realiza la prueba de bondad de ajuste de Hosmer-Lemeshow, mencionada y utilizada en el modelo saturado (ver hipótesis del test)
+
+```{r}
+prediccion2 <- predict(logistica_2_5, type="response")
+hosmer2 <- hoslem.test(logistica_2_5$y, logistica_2_5$fitted.values) # Test Hosmwe-Lemeshow
+hosmer2
+```
+
+Como el Test de bondad de ajuste de Hosmer-Lemeshow da un p-value (0.2635) mayor a 0.05, entonces la diferencia entre lo observado y lo esperado es igual a cero y, por ende, el modelo ajusta bien al conjunto de datos que se tiene.
+
+Por último, para comparar ambos modelos, se utiliza el Test Likelihood ratio. Este test compara los valores de LogLik y analiza si la diferencia en estos valores de ajuste es significativa o no. La hipótesis nula indica que la diferencia es nula (no significativa), mientras que la alternativa indica que la diferencia no es nula y que es significativa.
+
+```{r}
+lrtest(logistica_1, logistica_2_5)
+```
+
+Como el Test Likelihood ratio da un p-value ($0.4763$) mayor a 0.05, se acepta la hipótesis nula. Por lo tanto, la diferencia entre los dos valores LogLik es nula y no significativa, lo cual indica que los dos modelos ajusten de igual manera (o de manera similar).
+
+Sin embargo, se decide elegir el segundo modelo dado que todas las variables son significativas y presenta un LogLik más chico.
+
+# Ejercicio 7
+
+En el análisis univariado se observó que la edad, la PAS, la PAD la colesterolemia y la cantidad de cigarrillos fumados por día presentan diferencias significativas al comparar los sujetos con y sin EC. Por otro lado, se observó que el sexo (ser hombre) y la categoría packs influyen en las ECs.
+
+Luego, en el análisis multivariado se realizó un modelo de regresión logística saturado y se observó que las variables PAD, cig, packs0 y packs1 (variables dummy de packs) no son significativas para dicho modelo (p-values > 0.05), mientras que el resto de las variables sí lo es (p-values < 0.05). Además, se investigó las magnitudes de las relaciones existentes entre las variables significativas y el outcome mediante el cálculo de los Odds Ratio. Se observó que para la edad, por cada año que aumenta, el riesgo de sufrir una EC aumenta en un 6% (o aumenta 1.06 veces). Para la PAS, por cada aumento unitario de PAS, el riesgo de sufrir una EC aumenta un 1.5% (o aumenta 1.015 veces). Para la variable colesterolemia, por cada aumento unitario de colesterolemia, el riesgo de sufrir una EC aumenta en un 0.46% (o 1.0046 veces). Para la variable Hombre, el hecho de ser hombre aumenta el riesgo de sufrir una EC en un 147% (o aumenta 2.4747 veces). Además, gracias al Test de bondad de ajuste de Hosmer-Lemeshow, se probó que el modelo generado presenta un buen ajuste al conjunto de datos (p-value = 0.396).
+
+Como segundo modelo, se propuso uno de regresión logística que contenga únicamente variables significativas. Para obtener este modelo, se realizó el backward elimination, lo que terminó en un modelo con las variables significativas edad, PAS, colesterolemia y Hombre (p-values < 0.05). Además, mediante el cálculo de los OR, se observó que las cuatro variables presentan una relación con el outcome (EC). Para la edad, por cada año que aumenta, el riesgo de sufrir una EC aumenta en un 5.29% (o aumenta 1.0529 veces). Para la PAS, por cada aumento unitario, el riesgo de sufrir una EC aumenta un 1.7% (o aumenta 1.017 veces). Para la variable colesterolemia, por cada aumento unitario, el riesgo de sufrir una EC aumenta en un 0.477% (o 1.00477 veces). Para la variable Hombre, el hecho de ser hombre aumenta el riesgo de sufrir una EC en un 175% (o aumenta 2.74796 veces). También se probó, mediante el Test de Hosmer-Lemeshow que el modelo generado presenta un buen ajuste a los datos (p-value = 0.2635).
+
+Por último, mediante el Test Likelihood Ratio, se comprobó que no hay diferencia significativa entre los dos modelos en cuanto al ajuste a los datos (p-value = 0.4763). Sin embargo, se decidió elegir el segundo modelo ya que todas las variables son significativas, tiene menor cantidad de variables y presenta un LogLik más chico (-621.43 contra -619.67), es decir, un mejor ajuste.
+
+
+
